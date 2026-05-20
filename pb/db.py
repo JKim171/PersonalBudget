@@ -26,6 +26,11 @@ CREATE TABLE IF NOT EXISTS txn (
 
 CREATE INDEX IF NOT EXISTS idx_txn_occurred ON txn(occurred_on);
 CREATE INDEX IF NOT EXISTS idx_txn_category ON txn(category_id);
+
+CREATE TABLE IF NOT EXISTS plan_allocation (
+    category_id INTEGER PRIMARY KEY REFERENCES category(id) ON DELETE CASCADE,
+    percent REAL NOT NULL CHECK(percent >= 0 AND percent <= 100)
+);
 """
 
 DEFAULT_CATEGORIES: list[tuple[str, str]] = [
@@ -49,11 +54,22 @@ def connect(db_path: Path | str | None = None) -> sqlite3.Connection:
     return conn
 
 
-def init_db(conn: sqlite3.Connection) -> None:
-    """Create schema and seed default categories. Idempotent."""
+def apply_schema(conn: sqlite3.Connection) -> None:
+    """Create/upgrade tables. Idempotent, safe to call on every connect."""
     conn.executescript(SCHEMA)
+    conn.commit()
+
+
+def seed_defaults(conn: sqlite3.Connection) -> None:
+    """Insert default categories if not already present."""
     conn.executemany(
         "INSERT OR IGNORE INTO category(name, kind) VALUES (?, ?)",
         DEFAULT_CATEGORIES,
     )
     conn.commit()
+
+
+def init_db(conn: sqlite3.Connection) -> None:
+    """Schema + seed. Idempotent."""
+    apply_schema(conn)
+    seed_defaults(conn)

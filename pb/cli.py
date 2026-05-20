@@ -6,7 +6,7 @@ from datetime import date
 
 import click
 
-from . import core, db
+from . import core, db, plan as plan_mod
 from .models import Transaction
 
 
@@ -21,6 +21,7 @@ def _parse_date(value: str | None) -> date | None:
 
 def _open(ctx: click.Context):
     conn = db.connect(ctx.obj["db_path"])
+    db.apply_schema(conn)
     ctx.call_on_close(conn.close)
     return conn
 
@@ -233,6 +234,108 @@ def balance(ctx: click.Context, month: str | None) -> None:
             f"  {r['category'].ljust(name_w)}  {r['kind']:<8}  "
             f"{core.format_money(r['total_cents'])}"
         )
+
+
+@cli.group()
+def plan() -> None:
+    """Manage percentage-based budget allocations."""
+
+
+@plan.command("set")
+@click.argument("category")
+@click.argument("percent", type=click.FloatRange(0, 100))
+@click.pass_context
+def plan_set(ctx: click.Context, category: str, percent: float) -> None:
+    """Set CATEGORY's allocation to PERCENT (0..100)."""
+    conn = _open(ctx)
+    try:
+        alloc = plan_mod.set_allocation(conn, category, percent)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"{alloc.category_name}: {alloc.percent}%  ({alloc.category_kind})")
+
+
+@plan.command("show")
+@click.pass_context
+def plan_show(ctx: click.Context) -> None:
+    conn = _open(ctx)
+    allocs = plan_mod.get_plan(conn)
+    if not allocs:
+        click.echo("No allocations set. Try: budget plan set Save 60")
+        return
+    name_w = max(len(a.category_name) for a in allocs)
+    for a in allocs:
+        click.echo(
+            f"  {a.category_name.ljust(name_w)}  {a.percent:>5.1f}%  {a.category_kind}"
+        )
+    total = sum(a.percent for a in allocs)
+    click.echo(f"  {'Total'.ljust(name_w)}  {total:>5.1f}%")
+    if abs(total - 100) > 0.01:
+        click.echo(
+            f"  ⚠ allocations sum to {total:.1f}%, not 100%.", err=True
+        )
+
+
+@plan.command("remove")
+@click.argument("category")
+@click.pass_context
+def plan_remove(ctx: click.Context, category: str) -> None:
+    conn = _open(ctx)
+    if plan_mod.remove_allocation(conn, category):
+        click.echo(f"Removed allocation for {category}.")
+    else:
+        click.echo(f"No allocation found for {category}.")
+
+
+@plan.command("clear")
+@click.confirmation_option(prompt="Clear all allocations?")
+@click.pass_context
+def plan_clear(ctx: click.Context) -> None:
+    conn = _open(ctx)
+    n = plan_mod.clear_plan(conn)
+    click.echo(f"Cleared {n} allocation(s).")
+
+
+@cli.command()
+@click.option("--month", default=None, help="YYYY-MM (default: current month)")
+@click.pass_context
+def report(ctx: click.Context, month: str | None) -> None:
+    """Plan vs. actual for a month."""
+    conn = _open(ctx)
+    r = plan_mod.report(conn, month=month)
+    click.echo(f"Plan vs. actual for {r['month']}")
+    click.echo(f"Income this month: {core.format_money(r['income_cents'])}\n")
+
+    if not r["lines"]:
+        click.echo("No allocations set. Try: budget plan set Save 60")
+    else:
+        header = f"  {'Category'.ljust(14)}  {'%':>6}  {'Allocated':>12}  {'Spent':>12}  {'Remaining':>12}"
+        click.echo(header)
+        for line in r["lines"]:
+            cat = line["category"][:14].ljust(14)
+            pct = f"{line['percent']:.1f}%"
+            allocated = core.format_money(line["allocated_cents"])
+            spent = core.format_money(line["spent_cents"])
+            remaining = core.format_money(line["remaining_cents"])
+            warn = "  ⚠" if line["remaining_cents"] < 0 else ""
+            click.echo(
+                f"  {cat}  {pct:>6}  {allocated:>12}  {spent:>12}  {remaining:>12}{warn}"
+            )
+        total_alloc = sum(l["allocated_cents"] for l in r["lines"])
+        total_spent = sum(l["spent_cents"] for l in r["lines"])
+        click.echo(
+            f"  {'Total'.ljust(14)}  {r['total_percent']:>5.1f}%  "
+            f"{core.format_money(total_alloc):>12}  "
+            f"{core.format_money(total_spent):>12}  "
+            f"{core.format_money(total_alloc - total_spent):>12}"
+        )
+
+    if r["unbudgeted"]:
+        click.echo("\nUnbudgeted spending:")
+        for u in r["unbudgeted"]:
+            click.echo(
+                f"  {u['category']:<14}  {u['kind']:<8}  {core.format_money(u['spent_cents'])}"
+            )
 
 
 if __name__ == "__main__":

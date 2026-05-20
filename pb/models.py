@@ -22,3 +22,11 @@ class Transaction:
     category_name: str
     category_kind: str
     note: str | None
+
+
+@dataclass(frozen=True)
+class Allocation:
+    category_id: int
+    category_name: str
+    category_kind: str  # 'expense' | 'savings' — income is not allocatable
+    percent: float

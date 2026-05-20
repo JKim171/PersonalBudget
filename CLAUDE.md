@@ -26,6 +26,12 @@ All CLI commands route through `budget.py`. The DB path defaults to `./budget.db
 .venv/bin/python budget.py save 600                            # move to "Save" category
 .venv/bin/python budget.py list --month 2026-05 --category Food
 .venv/bin/python budget.py balance --month 2026-05
+
+# Phase 2 — budget plan + actual-vs-planned report
+.venv/bin/python budget.py plan set Save 60                    # upsert one allocation
+.venv/bin/python budget.py plan show                           # warns if sum != 100
+.venv/bin/python budget.py plan remove Save
+.venv/bin/python budget.py report --month 2026-05              # allocated / spent / remaining per category
 ```
 
 ## Tests
@@ -41,10 +47,11 @@ Tests use `:memory:` SQLite, so they're hermetic and fast.
 
 Two-layer design — the **core** layer is UI-agnostic, the **CLI** is just a thin presentation shell. Future UIs (web, TUI) can reuse `pb/core.py` unchanged.
 
-- `pb/db.py` — SQLite connection helper, schema, and seed. `connect()` returns a `sqlite3.Connection` with `Row` factory and foreign keys ON. `init_db()` is idempotent.
-- `pb/models.py` — Frozen dataclasses (`Category`, `Transaction`). Transaction is a flattened view model that includes the joined category name + kind for display convenience.
-- `pb/core.py` — Business logic: `add_transaction`, `list_transactions`, `balance`, money parse/format. All functions take an explicit `sqlite3.Connection` (no module-level state).
-- `pb/cli.py` — `click` CLI group. Each command opens its own connection from `ctx.obj["db_path"]` and registers `conn.close` via `ctx.call_on_close`.
+- `pb/db.py` — SQLite connection + schema. `apply_schema()` is the lightweight idempotent migration (called on every CLI command via `_open`); `seed_defaults()` inserts the default category list; `init_db()` calls both.
+- `pb/models.py` — Frozen dataclasses (`Category`, `Transaction`, `Allocation`). `Transaction` is a flattened view model that includes the joined category name + kind for display convenience.
+- `pb/core.py` — Transaction-layer logic: `add_transaction`, `list_transactions`, `balance`, money parse/format, `_month_bounds`. All functions take an explicit `sqlite3.Connection` (no module-level state).
+- `pb/plan.py` — Budget plan layer: `set_allocation` (upsert), `get_plan`, `remove_allocation`, `clear_plan`, `report` (plan vs. actual for a month, including unbudgeted spending).
+- `pb/cli.py` — `click` CLI group. `_open` opens a connection and applies the schema so older DBs migrate transparently. Each command registers `conn.close` via `ctx.call_on_close`.
 - `budget.py` — Single-line entrypoint that re-exports `pb.cli:cli`.
 
 ### Key invariants
@@ -53,11 +60,14 @@ Two-layer design — the **core** layer is UI-agnostic, the **CLI** is just a th
 - **Direction is implied by the category's kind**, not the transaction. `income` adds to inflow, `expense` and `savings` are outflows. `balance.net_cents = income - expense - savings`.
 - **`Save` is a category, not a separate account.** Phase 3 will layer goals on top by linking contributions to savings transactions.
 - Dates are stored as ISO `YYYY-MM-DD` strings; month filters use half-open ranges `[start, next_month_start)` computed in `_month_bounds`.
+- **One active plan, no history.** `plan_allocation` is a flat table — one row per allocated category. The same plan is applied to every month and evaluated against that month's actual income. Income kind categories are not allocatable.
+- **Schema auto-migrates.** Every CLI command runs `apply_schema()` after connect, so existing DBs pick up new tables (e.g., `plan_allocation`) without an explicit migration step.
 
 ## Roadmap (where this is going)
 
-- **Phase 2** — `BudgetPlan` table with percentage allocations per category; `budget plan set` / `budget report` showing actual vs. planned per month.
+- **Phase 1 (done)** — CLI + SQLite tracking: transactions, categories, balance.
+- **Phase 2 (done)** — Percentage allocations + actual-vs-planned monthly report.
 - **Phase 3** — `Goal` (target purchase) + `goal_contribution` linking to savings transactions.
-- **Phase 4** — Web UI (FastAPI + HTMX or Streamlit) reusing `pb/core.py`.
+- **Phase 4** — Web UI (FastAPI + HTMX or Streamlit) reusing `pb/core.py` and `pb/plan.py`.
 
-When extending: add to `pb/core.py` first (with tests), then surface in `pb/cli.py`. Don't put business logic in CLI commands.
+When extending: add to the appropriate domain module (`pb/core.py` for transactions, `pb/plan.py` for plan/report logic, future `pb/goals.py` for goals) **with tests**, then surface in `pb/cli.py`. Don't put business logic in CLI commands.
