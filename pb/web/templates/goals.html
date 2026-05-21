@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Goals{% endblock %}
+
+{% block content %}
+<h2>Goals</h2>
+
+<details {% if not goals %}open{% endif %}>
+  <summary><strong>Add a goal</strong></summary>
+  <form method="post" action="/goals">
+    <div class="grid">
+      <label>
+        Name
+        <input type="text" name="name" required placeholder="Laptop">
+      </label>
+      <label>
+        Target
+        <input type="text" name="target" required placeholder="2000">
+      </label>
+      <label>
+        Target date (optional)
+        <input type="date" name="target_date">
+      </label>
+    </div>
+    <button type="submit">Create goal</button>
+  </form>
+</details>
+
+{% if not goals %}
+  <p class="muted">No goals yet.</p>
+{% else %}
+<div class="goal-card">
+  {% for g in goals %}
+  <article>
+    <header>
+      <strong><a href="/goals/{{ g.name }}">{{ g.name }}</a></strong>
+      <span class="muted" style="float:right">
+        {{ g.contributed_cents | money }} / {{ g.target_cents | money }}
+        ({{ "%.0f"|format(g.percent) }}%)
+        {% if g.target_date %} · by {{ g.target_date }}{% endif %}
+      </span>
+    </header>
+    <progress value="{{ g.percent }}" max="100"></progress>
+  </article>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

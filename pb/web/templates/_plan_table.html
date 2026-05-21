@@ -1,0 +1,37 @@
+<div id="plan-table">
+  {% if not allocations %}
+    <p class="muted">No allocations yet.</p>
+  {% else %}
+  <table>
+    <thead>
+      <tr><th>Category</th><th class="num">%</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for a in allocations %}
+      <tr>
+        <td>{{ a.category_name }} <span class="pill">{{ a.category_kind }}</span></td>
+        <td class="num">{{ "%.1f"|format(a.percent) }}%</td>
+        <td class="num">
+          <button hx-post="/plan/allocations/{{ a.category_name }}/delete"
+                  hx-target="#plan-table" hx-swap="outerHTML"
+                  hx-confirm="Remove allocation for {{ a.category_name }}?"
+                  class="secondary outline">Remove</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td>Total</td>
+        <td class="num {% if (total_percent - 100)|abs > 0.01 %}warn{% endif %}">
+          {{ "%.1f"|format(total_percent) }}%
+        </td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+  {% if (total_percent - 100)|abs > 0.01 %}
+    <p class="warn">⚠ allocations sum to {{ "%.1f"|format(total_percent) }}%, not 100%.</p>
+  {% endif %}
+  {% endif %}
+</div>

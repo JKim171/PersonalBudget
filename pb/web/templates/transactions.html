@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Transactions{% endblock %}
+
+{% block content %}
+<h2>Transactions</h2>
+
+<details open>
+  <summary><strong>Log a transaction</strong></summary>
+  <form method="post" action="/transactions">
+    <div class="grid">
+      <label>
+        Kind
+        <select name="kind" required>
+          <option value="expense">Expense</option>
+          <option value="income">Income</option>
+          <option value="savings">Savings</option>
+        </select>
+      </label>
+      <label>
+        Amount
+        <input type="text" name="amount" placeholder="12.50" required>
+      </label>
+      <label>
+        Category
+        <select name="category" required>
+          {% for c in categories %}
+          <option value="{{ c.name }}" data-kind="{{ c.kind }}">{{ c.name }} ({{ c.kind }})</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <div class="grid">
+      <label>
+        Date
+        <input type="date" name="occurred_on">
+      </label>
+      <label>
+        Note
+        <input type="text" name="note" placeholder="Optional">
+      </label>
+    </div>
+    <button type="submit">Log it</button>
+  </form>
+</details>
+
+<h3>Recent</h3>
+<form method="get" action="/transactions" class="grid">
+  <label>Month
+    <input type="month" name="month" value="{{ filter_month }}">
+  </label>
+  <label>Category
+    <select name="category">
+      <option value="">— any —</option>
+      {% for c in categories %}
+      <option value="{{ c.name }}" {% if c.name == filter_category %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>&nbsp;<button type="submit">Filter</button></label>
+</form>
+
+{% if not transactions %}
+  <p class="muted">No transactions match.</p>
+{% else %}
+<table>
+  <thead>
+    <tr><th>Date</th><th>Category</th><th class="num">Amount</th><th>Note</th></tr>
+  </thead>
+  <tbody>
+    {% for t in transactions %}
+    <tr>
+      <td>{{ t.occurred_on }}</td>
+      <td>{{ t.category_name }} <span class="pill">{{ t.category_kind }}</span></td>
+      <td class="num">
+        {% if t.category_kind == 'income' %}+{% elif t.category_kind == 'expense' %}-{% else %}→{% endif %}{{ t.amount_cents | money }}
+      </td>
+      <td class="muted">{{ t.note or "" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

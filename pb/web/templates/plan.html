@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Plan{% endblock %}
+
+{% block content %}
+<h2>Budget plan</h2>
+<p class="muted">Percentage allocations applied to each month's actual income.</p>
+
+<details open>
+  <summary><strong>Set / update allocation</strong></summary>
+  <form hx-post="/plan/allocations" hx-target="#plan-table" hx-swap="outerHTML">
+    <div class="grid">
+      <label>
+        Category
+        <select name="category" required>
+          {% for c in categories %}
+          <option value="{{ c.name }}">{{ c.name }} ({{ c.kind }})</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Percent
+        <input type="number" name="percent" min="0" max="100" step="0.1" required>
+      </label>
+      <label>&nbsp;<button type="submit">Save</button></label>
+    </div>
+  </form>
+</details>
+
+{% include "_plan_table.html" %}
+{% endblock %}

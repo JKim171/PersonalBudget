@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {{ month }}{% endblock %}
+
+{% block content %}
+<hgroup>
+  <h2>Dashboard</h2>
+  <p>
+    Showing
+    <form style="display:inline" method="get" action="/">
+      <input type="month" name="month" value="{{ month }}"
+             onchange="this.form.submit()"
+             style="display:inline-block; width:auto; padding: 0.1rem 0.4rem;">
+    </form>
+  </p>
+</hgroup>
+
+<section class="summary-grid">
+  <article>
+    <small>Income</small>
+    <h4>{{ summary.income_cents | money }}</h4>
+  </article>
+  <article>
+    <small>Expenses</small>
+    <h4>{{ summary.expense_cents | money }}</h4>
+  </article>
+  <article>
+    <small>Savings</small>
+    <h4>{{ summary.savings_cents | money }}</h4>
+  </article>
+  <article>
+    <small>Net</small>
+    <h4>{{ summary.net_cents | money }}</h4>
+  </article>
+</section>
+
+<h3>Plan vs. actual</h3>
+{% if not report.lines %}
+  <p class="muted">No allocations set. <a href="/plan">Set up your plan →</a></p>
+{% else %}
+<table>
+  <thead>
+    <tr><th>Category</th><th class="num">%</th><th class="num">Allocated</th>
+        <th class="num">Spent</th><th class="num">Remaining</th></tr>
+  </thead>
+  <tbody>
+    {% for line in report.lines %}
+    <tr>
+      <td>{{ line.category }} <span class="pill">{{ line.kind }}</span></td>
+      <td class="num">{{ "%.1f"|format(line.percent) }}%</td>
+      <td class="num">{{ line.allocated_cents | money }}</td>
+      <td class="num">{{ line.spent_cents | money }}</td>
+      <td class="num {% if line.remaining_cents < 0 %}warn{% endif %}">
+        {{ line.remaining_cents | money }}{% if line.remaining_cents < 0 %} ⚠{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td>Total</td>
+      <td class="num">{{ "%.1f"|format(report.total_percent) }}%</td>
+      <td class="num">{{ report.lines|sum(attribute='allocated_cents') | money }}</td>
+      <td class="num">{{ report.lines|sum(attribute='spent_cents') | money }}</td>
+      <td class="num">{{ (report.lines|sum(attribute='allocated_cents') - report.lines|sum(attribute='spent_cents')) | money }}</td>
+    </tr>
+  </tfoot>
+</table>
+{% endif %}
+
+{% if report.unbudgeted %}
+<h4>Unbudgeted spending</h4>
+<ul>
+  {% for u in report.unbudgeted %}
+  <li>{{ u.category }} ({{ u.kind }}) — {{ u.spent_cents | money }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<h3>Goals</h3>
+{% if not goals %}
+  <p class="muted">No goals yet. <a href="/goals">Create one →</a></p>
+{% else %}
+<div class="goal-card">
+  {% for g in goals %}
+  <article>
+    <header>
+      <strong><a href="/goals/{{ g.name }}">{{ g.name }}</a></strong>
+      <span class="muted" style="float:right">
+        {{ g.contributed_cents | money }} / {{ g.target_cents | money }}
+        {% if g.target_date %} · by {{ g.target_date }}{% endif %}
+      </span>
+    </header>
+    <progress value="{{ g.percent }}" max="100"></progress>
+  </article>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

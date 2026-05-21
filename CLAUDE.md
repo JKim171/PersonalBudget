@@ -39,6 +39,10 @@ All CLI commands route through `budget.py`. The DB path defaults to `./budget.db
 .venv/bin/python budget.py goal show Laptop                    # progress bar + contribution history
 .venv/bin/python budget.py goal list
 .venv/bin/python budget.py goal delete Laptop                  # keeps underlying savings txns
+
+# Phase 4 — web UI
+.venv/bin/python budget.py web                                  # http://127.0.0.1:8000
+.venv/bin/python budget.py web --port 8765 --reload             # dev mode
 ```
 
 ## Tests
@@ -59,7 +63,8 @@ Two-layer design — the **core** layer is UI-agnostic, the **CLI** is just a th
 - `pb/core.py` — Transaction-layer logic: `add_transaction`, `list_transactions`, `balance`, money parse/format, `_month_bounds`. All functions take an explicit `sqlite3.Connection` (no module-level state).
 - `pb/plan.py` — Budget plan layer: `set_allocation` (upsert), `get_plan`, `remove_allocation`, `clear_plan`, `report` (plan vs. actual for a month, including unbudgeted spending).
 - `pb/goals.py` — Savings goals: `add_goal`, `list_goals`/`get_goal` (return `GoalProgress` with aggregated contributions), `contribute` (atomically creates a savings txn + links it), `delete_goal`, `list_contributions`.
-- `pb/cli.py` — `click` CLI group. `_open` opens a connection and applies the schema so older DBs migrate transparently. Each command registers `conn.close` via `ctx.call_on_close`.
+- `pb/cli.py` — `click` CLI group. `_open` opens a connection and applies the schema so older DBs migrate transparently. Each command registers `conn.close` via `ctx.call_on_close`. The `web` subcommand launches uvicorn against `pb.web.app:app`.
+- `pb/web/` — FastAPI app (`app.py`), DB dependency (`deps.py`), and Jinja templates. Routes parse forms and call into the same `core` / `plan` / `goals` modules the CLI uses. **No business logic in routes.** Uses Starlette 1.0's `TemplateResponse(request, name, ctx)` signature. Most form posts redirect (303); HTMX endpoints return HTML fragments for in-place swaps (plan table).
 - `budget.py` — Single-line entrypoint that re-exports `pb.cli:cli`.
 
 ### Key invariants
@@ -79,6 +84,7 @@ Two-layer design — the **core** layer is UI-agnostic, the **CLI** is just a th
 - **Phase 1 (done)** — CLI + SQLite tracking: transactions, categories, balance.
 - **Phase 2 (done)** — Percentage allocations + actual-vs-planned monthly report.
 - **Phase 3 (done)** — `goal` + `goal_contribution`, linked to real savings transactions.
-- **Phase 4** — Web UI (FastAPI + HTMX or Streamlit) reusing `pb/core.py`, `pb/plan.py`, `pb/goals.py`.
+- **Phase 4 (done)** — FastAPI + HTMX + Jinja2 web UI reusing all domain modules unchanged.
+- **Phase 5+ (ideas)** — Bank CSV import, recurring transactions, charts (Chart.js), auth if going multi-user, cloud sync.
 
-When extending: add to the appropriate domain module (`pb/core.py` for transactions, `pb/plan.py` for plan/report logic, `pb/goals.py` for goals) **with tests**, then surface in `pb/cli.py`. Don't put business logic in CLI commands.
+When extending: add to the appropriate domain module (`pb/core.py` for transactions, `pb/plan.py` for plan/report logic, `pb/goals.py` for goals) **with tests**, then surface in `pb/cli.py` and/or `pb/web/`. Don't put business logic in CLI commands or route handlers.

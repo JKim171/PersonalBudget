@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}PersonalBudget{% endblock %}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <style>
+    nav ul li a.active { font-weight: bold; }
+    .pill { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px;
+            font-size: 0.8em; background: var(--pico-secondary-background);
+            color: var(--pico-secondary-inverse); }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .warn { color: var(--pico-color-red-500); }
+    .muted { color: var(--pico-muted-color); }
+    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; }
+    .summary-grid article { margin: 0; padding: 0.75rem 1rem; }
+    .summary-grid h4 { margin: 0; font-size: 1.2em; }
+    .summary-grid small { color: var(--pico-muted-color); text-transform: uppercase;
+                         letter-spacing: 0.05em; font-size: 0.7em; }
+    table tfoot td { font-weight: bold; border-top: 2px solid var(--pico-muted-border-color); }
+    .goal-card progress { width: 100%; }
+  </style>
+</head>
+<body>
+<main class="container">
+  <nav>
+    <ul>
+      <li><strong>PersonalBudget</strong></li>
+    </ul>
+    <ul>
+      <li><a href="/" class="{% if active == 'dashboard' %}active{% endif %}">Dashboard</a></li>
+      <li><a href="/transactions" class="{% if active == 'transactions' %}active{% endif %}">Transactions</a></li>
+      <li><a href="/plan" class="{% if active == 'plan' %}active{% endif %}">Plan</a></li>
+      <li><a href="/goals" class="{% if active == 'goals' %}active{% endif %}">Goals</a></li>
+      <li><a href="/categories" class="{% if active == 'categories' %}active{% endif %}">Categories</a></li>
+    </ul>
+  </nav>
+
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

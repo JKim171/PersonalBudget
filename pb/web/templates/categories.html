@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Categories{% endblock %}
+
+{% block content %}
+<h2>Categories</h2>
+
+<details>
+  <summary><strong>Add a category</strong></summary>
+  <form method="post" action="/categories">
+    <div class="grid">
+      <label>
+        Name
+        <input type="text" name="name" required>
+      </label>
+      <label>
+        Kind
+        <select name="kind" required>
+          <option value="expense">Expense</option>
+          <option value="income">Income</option>
+          <option value="savings">Savings</option>
+        </select>
+      </label>
+      <label>&nbsp;<button type="submit">Add</button></label>
+    </div>
+  </form>
+</details>
+
+<table>
+  <thead><tr><th>Name</th><th>Kind</th></tr></thead>
+  <tbody>
+    {% for c in categories %}
+    <tr><td>{{ c.name }}</td><td><span class="pill">{{ c.kind }}</span></td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

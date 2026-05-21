@@ -483,5 +483,21 @@ def _progress_line(g) -> str:
     return base
 
 
+@cli.command()
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option("--port", default=8000, show_default=True, type=int)
+@click.option("--reload", is_flag=True, default=False, help="Auto-reload on code changes")
+def web(host: str, port: int, reload: bool) -> None:
+    """Launch the web UI (FastAPI + HTMX)."""
+    try:
+        import uvicorn
+    except ImportError as exc:
+        raise click.ClickException(
+            "Web dependencies missing. Install with: pip install -r requirements.txt"
+        ) from exc
+    click.echo(f"PersonalBudget web UI → http://{host}:{port}")
+    uvicorn.run("pb.web.app:app", host=host, port=port, reload=reload)
+
+
 if __name__ == "__main__":
     cli()
