@@ -31,6 +31,24 @@ CREATE TABLE IF NOT EXISTS plan_allocation (
     category_id INTEGER PRIMARY KEY REFERENCES category(id) ON DELETE CASCADE,
     percent REAL NOT NULL CHECK(percent >= 0 AND percent <= 100)
 );
+
+CREATE TABLE IF NOT EXISTS goal (
+    id INTEGER PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL,
+    target_cents INTEGER NOT NULL CHECK(target_cents > 0),
+    target_date TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS goal_contribution (
+    id INTEGER PRIMARY KEY,
+    goal_id INTEGER NOT NULL REFERENCES goal(id) ON DELETE CASCADE,
+    txn_id INTEGER NOT NULL REFERENCES txn(id) ON DELETE CASCADE,
+    amount_cents INTEGER NOT NULL CHECK(amount_cents > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_goal_contrib_goal ON goal_contribution(goal_id);
+CREATE INDEX IF NOT EXISTS idx_goal_contrib_txn ON goal_contribution(txn_id);
 """
 
 DEFAULT_CATEGORIES: list[tuple[str, str]] = [

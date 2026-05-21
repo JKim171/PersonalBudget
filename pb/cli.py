@@ -6,7 +6,7 @@ from datetime import date
 
 import click
 
-from . import core, db, plan as plan_mod
+from . import core, db, goals as goals_mod, plan as plan_mod
 from .models import Transaction
 
 
@@ -336,6 +336,151 @@ def report(ctx: click.Context, month: str | None) -> None:
             click.echo(
                 f"  {u['category']:<14}  {u['kind']:<8}  {core.format_money(u['spent_cents'])}"
             )
+
+
+@cli.group()
+def goal() -> None:
+    """Manage savings goals (target purchases)."""
+
+
+@goal.command("add")
+@click.argument("name")
+@click.argument("target")
+@click.option("--by", "target_date", default=None, help="Target date YYYY-MM-DD")
+@click.pass_context
+def goal_add(
+    ctx: click.Context, name: str, target: str, target_date: str | None
+) -> None:
+    conn = _open(ctx)
+    try:
+        cents = core.parse_money(target)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="TARGET") from exc
+    td = _parse_date(target_date)
+    try:
+        g = goals_mod.add_goal(conn, name, cents, td)
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+    by = f" by {g.target_date}" if g.target_date else ""
+    click.echo(f"Added goal {g.name}: target {core.format_money(g.target_cents)}{by}")
+
+
+@goal.command("list")
+@click.pass_context
+def goal_list(ctx: click.Context) -> None:
+    conn = _open(ctx)
+    goals = goals_mod.list_goals(conn)
+    if not goals:
+        click.echo("No goals yet. Try: budget goal add Laptop 2000 --by 2026-12-31")
+        return
+    name_w = max(len(g.name) for g in goals)
+    for g in goals:
+        click.echo(f"  {g.name.ljust(name_w)}  {_progress_line(g)}")
+
+
+@goal.command("show")
+@click.argument("name")
+@click.pass_context
+def goal_show(ctx: click.Context, name: str) -> None:
+    conn = _open(ctx)
+    g = goals_mod.get_goal(conn, name)
+    if g is None:
+        raise click.ClickException(f"No goal named {name!r}")
+    click.echo(g.name)
+    click.echo(f"  Target:     {core.format_money(g.target_cents)}")
+    click.echo(
+        f"  Saved:      {core.format_money(g.contributed_cents)}  ({g.percent:.1f}%)"
+    )
+    click.echo(f"  Remaining:  {core.format_money(g.remaining_cents)}")
+    if g.target_date:
+        delta = (g.target_date - date.today()).days
+        if g.contributed_cents >= g.target_cents:
+            status = "(achieved!)"
+        elif delta >= 0:
+            status = f"({delta} days away)"
+        else:
+            status = f"({abs(delta)} days overdue ⚠)"
+        click.echo(f"  Target date: {g.target_date}  {status}")
+    click.echo(f"  Progress:   {_progress_bar(g.percent)}")
+
+    contribs = goals_mod.list_contributions(conn, goal_name=g.name)
+    if contribs:
+        click.echo("\nContributions:")
+        for c in contribs:
+            line = f"  {c.occurred_on}  {core.format_money(c.amount_cents)}  txn #{c.txn_id}"
+            if c.note:
+                line += f"  — {c.note}"
+            click.echo(line)
+
+
+@goal.command("contribute")
+@click.argument("name")
+@click.argument("amount")
+@click.option("--category", "-c", default="Save", show_default=True,
+              help="Savings category to draw from")
+@click.option("--date", "occurred_on", default=None, help="YYYY-MM-DD (default: today)")
+@click.option("--note", "-n", default=None)
+@click.pass_context
+def goal_contribute(
+    ctx: click.Context,
+    name: str,
+    amount: str,
+    category: str,
+    occurred_on: str | None,
+    note: str | None,
+) -> None:
+    """Save AMOUNT toward goal NAME (creates a linked savings transaction)."""
+    conn = _open(ctx)
+    try:
+        cents = core.parse_money(amount)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="AMOUNT") from exc
+    try:
+        contrib = goals_mod.contribute(
+            conn,
+            name,
+            cents,
+            category=category,
+            occurred_on=_parse_date(occurred_on),
+            note=note,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    progress = goals_mod.get_goal(conn, contrib.goal_name)
+    click.echo(
+        f"Contributed {core.format_money(contrib.amount_cents)} to "
+        f"{contrib.goal_name} (txn #{contrib.txn_id}, {category})"
+    )
+    if progress:
+        click.echo(f"  → {_progress_line(progress)}")
+
+
+@goal.command("delete")
+@click.argument("name")
+@click.confirmation_option(prompt="Delete this goal and all its contribution links?")
+@click.pass_context
+def goal_delete(ctx: click.Context, name: str) -> None:
+    """Delete a goal. Underlying savings transactions are kept."""
+    conn = _open(ctx)
+    if goals_mod.delete_goal(conn, name):
+        click.echo(f"Deleted goal {name}.")
+    else:
+        click.echo(f"No goal named {name!r}.")
+
+
+def _progress_bar(percent: float, width: int = 20) -> str:
+    filled = max(0, min(width, int(round(width * percent / 100))))
+    return "[" + "█" * filled + "░" * (width - filled) + f"] {percent:.0f}%"
+
+
+def _progress_line(g) -> str:
+    base = (
+        f"{core.format_money(g.contributed_cents)} / "
+        f"{core.format_money(g.target_cents)}  {_progress_bar(g.percent, 14)}"
+    )
+    if g.target_date:
+        base += f"  by {g.target_date}"
+    return base
 
 
 if __name__ == "__main__":

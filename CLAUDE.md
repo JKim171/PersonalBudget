@@ -32,6 +32,13 @@ All CLI commands route through `budget.py`. The DB path defaults to `./budget.db
 .venv/bin/python budget.py plan show                           # warns if sum != 100
 .venv/bin/python budget.py plan remove Save
 .venv/bin/python budget.py report --month 2026-05              # allocated / spent / remaining per category
+
+# Phase 3 — savings goals (target purchases)
+.venv/bin/python budget.py goal add Laptop 2000 --by 2026-12-31
+.venv/bin/python budget.py goal contribute Laptop 300          # creates a Save txn + links it
+.venv/bin/python budget.py goal show Laptop                    # progress bar + contribution history
+.venv/bin/python budget.py goal list
+.venv/bin/python budget.py goal delete Laptop                  # keeps underlying savings txns
 ```
 
 ## Tests
@@ -51,6 +58,7 @@ Two-layer design — the **core** layer is UI-agnostic, the **CLI** is just a th
 - `pb/models.py` — Frozen dataclasses (`Category`, `Transaction`, `Allocation`). `Transaction` is a flattened view model that includes the joined category name + kind for display convenience.
 - `pb/core.py` — Transaction-layer logic: `add_transaction`, `list_transactions`, `balance`, money parse/format, `_month_bounds`. All functions take an explicit `sqlite3.Connection` (no module-level state).
 - `pb/plan.py` — Budget plan layer: `set_allocation` (upsert), `get_plan`, `remove_allocation`, `clear_plan`, `report` (plan vs. actual for a month, including unbudgeted spending).
+- `pb/goals.py` — Savings goals: `add_goal`, `list_goals`/`get_goal` (return `GoalProgress` with aggregated contributions), `contribute` (atomically creates a savings txn + links it), `delete_goal`, `list_contributions`.
 - `pb/cli.py` — `click` CLI group. `_open` opens a connection and applies the schema so older DBs migrate transparently. Each command registers `conn.close` via `ctx.call_on_close`.
 - `budget.py` — Single-line entrypoint that re-exports `pb.cli:cli`.
 
@@ -61,13 +69,16 @@ Two-layer design — the **core** layer is UI-agnostic, the **CLI** is just a th
 - **`Save` is a category, not a separate account.** Phase 3 will layer goals on top by linking contributions to savings transactions.
 - Dates are stored as ISO `YYYY-MM-DD` strings; month filters use half-open ranges `[start, next_month_start)` computed in `_month_bounds`.
 - **One active plan, no history.** `plan_allocation` is a flat table — one row per allocated category. The same plan is applied to every month and evaluated against that month's actual income. Income kind categories are not allocatable.
-- **Schema auto-migrates.** Every CLI command runs `apply_schema()` after connect, so existing DBs pick up new tables (e.g., `plan_allocation`) without an explicit migration step.
+- **Schema auto-migrates.** Every CLI command runs `apply_schema()` after connect, so existing DBs pick up new tables (e.g., `plan_allocation`, `goal`) without an explicit migration step.
+- **Goal contributions are always backed by a real savings transaction.** `goals.contribute` creates a `txn` row (savings kind) and a `goal_contribution` row atomically. There's no way to inflate goal progress without actually saving money. Contributions must use a `savings`-kind category (default `Save`).
+- **Cascade asymmetry.** Deleting a `goal` cascades to its `goal_contribution` rows but **keeps the underlying `txn` rows** — the money was really saved and remains in your savings category. Deleting a `txn` cascades to remove its contribution (so goal progress shrinks accordingly).
+- **Over-saving is allowed.** A goal at 150% of target is valid; `remaining_cents` clamps to 0 rather than going negative.
 
 ## Roadmap (where this is going)
 
 - **Phase 1 (done)** — CLI + SQLite tracking: transactions, categories, balance.
 - **Phase 2 (done)** — Percentage allocations + actual-vs-planned monthly report.
-- **Phase 3** — `Goal` (target purchase) + `goal_contribution` linking to savings transactions.
-- **Phase 4** — Web UI (FastAPI + HTMX or Streamlit) reusing `pb/core.py` and `pb/plan.py`.
+- **Phase 3 (done)** — `goal` + `goal_contribution`, linked to real savings transactions.
+- **Phase 4** — Web UI (FastAPI + HTMX or Streamlit) reusing `pb/core.py`, `pb/plan.py`, `pb/goals.py`.
 
-When extending: add to the appropriate domain module (`pb/core.py` for transactions, `pb/plan.py` for plan/report logic, future `pb/goals.py` for goals) **with tests**, then surface in `pb/cli.py`. Don't put business logic in CLI commands.
+When extending: add to the appropriate domain module (`pb/core.py` for transactions, `pb/plan.py` for plan/report logic, `pb/goals.py` for goals) **with tests**, then surface in `pb/cli.py`. Don't put business logic in CLI commands.
